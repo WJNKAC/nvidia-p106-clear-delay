@@ -1,0 +1,39 @@
+{
+  "version": "525.116.03",
+  "library": "libnvidia-glcore.so.525.116.03",
+  "arch": "x86_64",
+  "target_path": "/usr/lib/x86_64-linux-gnu/libnvidia-glcore.so.525.116.03",
+  "file_size": 44282616,
+  "before_md5": "276992071408f0828704f12827c85ae1",
+  "after_md5": "84bff6eb3940df59ee607dc117223334",
+  "reason": "525 在每次切批时向 pushbuffer 写入 0x3998=0xF0(240) 的 gr3d 延迟命令，240 单位 × 0.91us ≈ 218us/批，批次数线性叠加成帧时间。515.105.01 里整套机制不存在。本补丁把两个发射点的条件跳转改成无条件跳转，等价于永不发射该命令。",
+  "expected_effect": "n83b -M 7 -c 400 -n 400: map_p50 52.276ms -> 3.448ms, fps 18.96 -> 256.56, 像素校验 chk 保持 5150 不变",
+  "patches": [
+    {
+      "offset": "0x15c375e",
+      "old": "74",
+      "new": "eb",
+      "desc": "发射点1: je -> jmp（无条件跳过 gr3d 延迟命令）。所在函数 0x15c2e50，即 legacy 状态机"
+    },
+    {
+      "offset": "0x1841fe0",
+      "old": "75",
+      "new": "eb",
+      "desc": "发射点2: jne -> jmp（无条件跳过 gr3d 延迟命令）。所在函数 0x1841fb0"
+    }
+  ],
+  "why_safe": "74 xx / 75 xx / eb xx 均为 2 字节 rel8 短跳转，长度一致，原地替换不破坏指令边界与后续偏移。（换成 e9 rel32 会破坏布局，禁止）",
+  "context": {
+    "emit_site_1": "0x15c3767  movabs rcx, 0xF020010E66  (高32位=实参0xF0, 低32位=命令头0x20010E66)",
+    "emit_site_2": "0x1842131  movabs rsi, 0xF020010E66",
+    "gate_flag": "byte [obj+0xc18] —— 全局策略位，4 处检查；置位在 0x15bc880 内 0x15bd014 / 0x1452693"
+  },
+  "verified_on": "2026-10-27, <user>@<testhost>, P106-100, kernel 6.1.0-50-amd64",
+  "limitations": [
+    "驱动升级后偏移失效，需按语义特征重新定位",
+    "重装同版本驱动会覆盖该文件，补丁失效",
+    "dpkg -V / 包校验会报告该文件被修改",
+    "未做长时间稳定性测试（仅验证 n83b 与 Heaven 短时运行）",
+    "+0xc18 还被另外 4 处检查引用，那些路径的影响未逐一验证"
+  ]
+}

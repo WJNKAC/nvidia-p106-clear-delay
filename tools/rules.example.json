@@ -1,0 +1,47 @@
+{
+  "_comment": "复制为 rules.json 后按你的环境修改。不要提交 rules.json。",
+  "rules": [
+    {
+      "pattern": "alice@10\\.0\\.0\\.5",
+      "replace": "<user>@<testhost>",
+      "desc": "用户名@测试机IP"
+    },
+    {
+      "pattern": "10\\.0\\.0\\.5",
+      "replace": "<testhost>",
+      "desc": "测试机IP"
+    },
+    {
+      "pattern": "10\\.0\\.0\\.6",
+      "replace": "<lan-host-a>",
+      "desc": "局域网主机A"
+    },
+    {
+      "pattern": "/home/alice",
+      "replace": "/home/<user>",
+      "desc": "用户主目录"
+    },
+    {
+      "pattern": "/data/labs/mylab",
+      "replace": "<workdir>",
+      "desc": "研究工作目录"
+    },
+    {
+      "pattern": "\\bMyTestBox\\b",
+      "replace": "<testhost>",
+      "desc": "测试机主机名"
+    },
+    {
+      "pattern": "\\balice\\b",
+      "replace": "<user>",
+      "desc": "用户名"
+    }
+  ],
+  "leak_keys": [
+    "10.0.0.5",
+    "10.0.0.6",
+    "/home/alice",
+    "MyTestBox",
+    "alice@"
+  ]
+}
