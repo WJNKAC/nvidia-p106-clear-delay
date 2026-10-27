@@ -1,0 +1,37 @@
+{
+  "version": "580.178.04",
+  "side": "kernel",
+  "status": "EXPERIMENTAL",
+  "status_note": "实验性。目的是验证「内核设备白名单」是否与用户态每批次延迟是同一根因。不适合作为交付方案。",
+
+  "blob_path": "/usr/src/nvidia-580.178.04/nvidia/nv-kernel.o_binary",
+  "source_blob": "<workdir>/drivers/580.178.04/NVIDIA-Linux-x86_64-580.178.04/kernel/nvidia/nv-kernel.o_binary",
+  "blob_size": 112677456,
+  "blob_md5_orig": "caa613d35d8bdfd615cee91e932689b5",
+  "blob_md5_patched": "PENDING",
+
+  "method": "dartraiden/NVIDIA-patcher 的 Linux 移植思路：把矿卡的 device ID 条目从「受限设备表」里抹掉（替换成哨兵 0x0007FFFF）",
+  "source_url": "https://github.com/dartraiden/NVIDIA-patcher/issues/3",
+  "table_offset": "0x5cfdfcc",
+  "table_note": "位于 .rodata 段的嵌入 blob 内（该区域无独立符号）。表项形如 0x0007XXXX，低 16 位是 device ID，0x0007 前缀推测是家族标记。",
+  "our_device": "10DE:1C07 (P106-100) → 表内条目 0x00071C07 位于 0x5cfdfd8",
+
+  "entries": [
+    { "offset": "0x5cfdfcc", "old": "071b0700", "new": "ffff0700", "desc": "device 0x1B07 (P-series) → 0xFFFF 哨兵" },
+    { "offset": "0x5cfdfd0", "old": "871b0700", "new": "ffff0700", "desc": "device 0x1B87 (P-series) → 0xFFFF 哨兵" },
+    { "offset": "0x5cfdfd4", "old": "c71b0700", "new": "ffff0700", "desc": "device 0x1BC7 (P-series) → 0xFFFF 哨兵" },
+    { "offset": "0x5cfdfd8", "old": "071c0700", "new": "ffff0700", "desc": "device 0x1C07 (P106-100，本机) → 0xFFFF 哨兵" },
+    { "offset": "0x5cfdfdc", "old": "091c0700", "new": "ffff0700", "desc": "device 0x1C09 (P106-090) → 0xFFFF 哨兵" }
+  ],
+
+  "note_on_scope": "dartraiden 只改了低 16 位（09 1C → FF FF），保留 0x0007 前缀，效果等同写 0x0007FFFF。本文件按整 dword 写 ffff0700 表达同一结果。",
+
+  "purpose": "回答一个具体问题：只打这个内核补丁（不打用户态补丁）时，method 0x3998 的每批次延迟命令还会不会发？如果不再发，说明两套方案指向同一根因，内核侧才是上游。",
+
+  "risks": [
+    "需要重建并重新加载内核模块，会中断图形会话",
+    "内核补丁改的是设备身份，可能影响未验证的代码路径",
+    "没有像素级校验手段（不像用户态补丁能看 chk）",
+    "实验失败时的恢复手段：从 .orig 恢复 blob 并重建，或重装驱动"
+  ]
+}

@@ -1,38 +1,76 @@
-# nvgl-batch-delay-patch
+# nvidia-p106-clear-delay
 
-**给 NVIDIA 闭源用户态驱动（`libnvidia-glcore.so`）打字节补丁，消除"每批次固定延迟"造成的性能塌陷。**
+> **🤖 AI 参与声明**
+> 本项目的分析、实验设计、工具编写与文档整理均有 AI 参与。
+> 但**所有偏移地址、字节值、性能数字都来自真机实测**，没有一个是推测填充的。
+> 推导过程与踩坑记录（包括几次判断错误和撤回）完整保留在 `docs/reports/` 里，可自行核对。
+
+**清除 NVIDIA 驱动给 P106 矿卡加的「每批次延迟」，帧率提升约 14 倍，恢复到满速。**
 
 ---
 
-## 这是什么
+## Principle (English, brief)
 
-2022 年后的 NVIDIA 驱动（从 520 系列开始）在每次 GPU 批次提交时，会向 pushbuffer 写入一条
+NVIDIA's kernel module ships a **restricted-SKU device table**. P106-100 (`10DE:1C07`)
+is listed in it. Once the card is identified as restricted, the user-space GL driver
+writes an 8-byte command at **every batch boundary**:
+
+```
+0x20010E66  0x000000F0      # write gr3d method 0x3998 = 240
+```
+
+The GPU then idles for roughly **122 µs per batch**, costing about **14× frame rate**. At 400 batches per frame that is
+~48.8 ms of pure waiting — the GPU shows 100 % utilization but draws only ~60 W.
+
+Two independent fixes both work and do **not** stack:
+
+1. **Kernel side (root cause)** — remove the card's entry from the table; the command is
+   never generated at all.
+2. **User space (symptom)** — flip the conditional jump that guards the emit
+   (`74`/`75` → `eb`, 1–2 bytes); the command is generated but never written.
+
+Rendering output is bit-identical either way (verified by pixel checksum).
+
+---
+
+## 这是什么（中文）
+
+上面那段是英文原理速览，下面开始都用中文。
+
+NVIDIA 从 520 系列驱动起，在 GPU 内核模块里加了一张**受限设备表**，把 P104 / P106 / CMP
+这些矿卡的 device id 列了进去。卡一旦被判定为"受限"，用户态 GL 驱动就会在**每次批提交的
+边界**往里塞一条 8 字节命令：
 
 ```
 method 0x3998 = 0xF0 (240)
 ```
 
-的 gr3d 延迟命令。240 个单位 × 约 0.91 µs ≈ **218 µs / 批**。
-于是帧时间随批次数线性增长：
+意思是"向 gr3d 的 0x3998 写 240"，GPU 收到就白等约 **122 µs**。
 
-```
-T_frame = T_base + 批次数 × 218 µs
-```
+一帧 400 批，就是 400 × 122 µs ≈ **48.8 ms** 的纯等待 —— 所以你会看到
+**GPU 占用 100%、功耗却只有 60 W 左右上不去**，帧率只有正常水平的 1/14。
 
-对于"每帧几十到几百个批次"的普通应用影响不大，
-但对**批次数多**的场景（大量小 draw call、逐物体状态切换）会造成数量级的性能损失。
+最反直觉的一点：**耗时只跟批次数有关，跟分辨率和像素量无关。**
+512×512 的小窗口和 1920×1080 一样慢，因为 GPU 根本没在画，它在等。
 
-本项目做的事情：
+**普通 GTX/RTX 卡不在那张表里，所以完全不受影响** ——
+这也是为什么网上同类报告很少，只有矿卡用户会遇到。
+
+**515 及更早的驱动里整套机制都不存在**，所以那个版本一切正常。
+
+---
+
+## 本项目做的事情
 
 | | |
 |---|---|
-| **定位** | 在 `libnvidia-glcore.so` 里找到发射这条命令的两处代码 |
-| **打补丁** | 把发射点的条件跳转改成无条件跳转（**1~2 个字节**） |
+| **定位** | 内核侧找到那张「受限设备表」；用户态找到发射那条命令的两处代码 |
+| **打补丁** | 内核：把矿卡条目从表里抹掉（10 字节）<br>用户态：把条件跳转改成无条件跳转（1~2 字节） |
 | **验证** | 三层验证（磁盘 / 进程内存 / 行为）+ 像素校验确认画面不变 |
-| **固化** | 写进 `.so` 文件，驱动每次加载自动生效，无需 `LD_PRELOAD` |
+| **固化** | 写进文件，驱动每次加载自动生效，无需 `LD_PRELOAD` |
 
-**关键点：这条命令在旧驱动里根本不存在。** 老版本（如 515.105.01）压根没有这套机制 ——
-所以这不是"参数调太大"，而是"新增了一条本不该无条件发送的命令"。
+**关键点：这条命令在旧驱动里根本不存在。** 515.105.01 压根没有这套机制 ——
+所以这不是"延迟参数调太大"，而是"新增了一条只对矿卡生效的命令"。
 
 ---
 
@@ -52,8 +90,40 @@ T_frame = T_base + 批次数 × 218 µs
 相差 0.4% —— 差了一个大版本内核加一个大版本驱动，补丁后性能几乎完全一致。
 **⇒ 这条延迟命令就是全部原因。**
 
+> **更新**：后来发现这条命令的**开关在内核侧**（受限设备白名单）。
+> 详见下方「更深一层」一节 —— 只打内核补丁同样能到 3.668 ms，且命令**根本不生成**。
+
 **稳定性**：Heaven 4.0 满负载连续 5 分 28 秒，
 GPU 100% 占用 / 117–119 W / 54 °C / 零 Xid / 零错误。
+
+---
+
+## ★ 更深一层：这不是「用户态 bug」，根源在内核的设备白名单
+
+后续实验（报告 174）发现：**同样的性能问题，只打内核补丁也能完全解决，而且更彻底。**
+
+NVIDIA 内核模块 `nv-kernel.o_binary` 里有一张**受限设备表**，P1XX / CMP 系列矿卡
+（含 P106-100，device `0x1C07`）列在其中。当内核把该卡判为"受限 SKU"，
+用户态 glcore 就会置位一个策略位，从而**每批次发射那条 240 单位的延迟命令**。
+
+把这张表里的矿卡条目抹掉（改成无效 device id）后：
+
+| 配置 | `map_p50` | `fps` | `method 0x3998` |
+|---|---|---|---|
+| 都无（基线） | 52.202 ms | 18.98 | 40+ 条 |
+| **只打内核补丁** | **3.668 ms** | **243.78** | **0 条（根本不生成）** |
+| 只打用户态补丁 | 3.434 ms | 259.79 | 0 条 |
+| 两个都打 | 3.667 ms | 246.64 | 0 条 |
+
+**⇒ 两个补丁互不叠加。内核补丁是治本，本仓库的用户态补丁是治标（下游拦截）。**
+
+**这同时解释了一个关键现象**：普通 GTX/RTX 卡不在那张表里，
+策略位永远不置位，那条延迟命令**对它们根本不生效** ——
+所以这是一个**针对矿卡的定向限制**，而不是普遍的性能回归。
+
+> 内核方案的做法与出处：参见报告 174，以及 <https://github.com/dartraiden/NVIDIA-patcher/issues/3>。
+> **内核补丁改动更大、影响面更广（改设备身份），本仓库仍以用户态补丁为主**，
+> 因为它只需要 1~2 个字节，且能用像素校验值 `chk` 证明画面未变。
 
 ---
 
@@ -64,13 +134,14 @@ GPU 100% 占用 / 117–119 W / 54 °C / 零 Xid / 零错误。
 ├── README.md                  ← 本文件
 ├── DISCLAIMER.md              免责与法律说明（务必先读）
 ├── docs/
-│   ├── INDEX.md               研究报告索引（174 份，按主题分类）
+│   ├── INDEX.md               研究报告索引（175 份，按主题分类）
 │   └── reports/               脱敏后的完整研究记录
 ├── patches/
 │   ├── README.md              补丁总览与通用约束
 │   ├── patch_glcore.py        通用补丁工具（check / apply / revert / verify）
 │   ├── 525.116.03/            patch.json + apply.sh + revert.sh + 详细说明
-│   └── 580.178.04/
+│   ├── 580.178.04/
+│   └── kernel/                内核侧方案（改受限设备表，治本，风险更大）
 └── tools/
     ├── desensitize.py         报告脱敏工具（规则外置）
     ├── rules.example.json     脱敏规则示例（假数据）

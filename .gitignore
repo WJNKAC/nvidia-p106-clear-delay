@@ -1,0 +1,7 @@
+# 脱敏规则文件含真实 IP / 主机名 / 用户名，禁止提交
+tools/rules.json
+
+# 临时文件
+*.tmp
+*.orig
+*.nfs*
