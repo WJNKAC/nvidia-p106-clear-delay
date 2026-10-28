@@ -8,7 +8,7 @@
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPEC="$HERE/patch.json"
-TOOL="$HERE/../tools/patch_glcore.py"
+TOOL="$HERE/../patch_glcore.py"
 
 # 从 patch.json 读默认目标路径
 TARGET="${1:-$(python3 -c "import json;print(json.load(open('$SPEC'))['target_path'])")}"

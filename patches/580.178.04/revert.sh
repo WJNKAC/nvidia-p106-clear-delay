@@ -36,7 +36,7 @@ fi
 
 echo "恢复后 md5: $(md5sum "$TARGET" | awk '{print $1}')"
 echo
-python3 "$HERE/../tools/patch_glcore.py" check "$TARGET" --spec "$SPEC"
+python3 "$HERE/../patch_glcore.py" check "$TARGET" --spec "$SPEC"
 echo
 echo "=== 完成 ==="
 echo "注意: 正在运行的图形程序不受影响，需重启程序（或重新登录）才生效。"
