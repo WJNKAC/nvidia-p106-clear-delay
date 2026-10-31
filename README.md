@@ -7,15 +7,29 @@
 
 **清除 NVIDIA 驱动给 P106 矿卡加的「每批次延迟」，帧率提升约 14 倍，恢复到满速。**
 
+> ## 结论（项目定位）
+>
+> **OpenGL** 的那条「每批次延迟」，能在**用户态**（`libnvidia-glcore.so`）里找到并直接截断
+> —— 改 1 字节条件跳转即可，本仓库就是这个。
+>
+> **Vulkan 暂时没有找到**同等手段。我们在用户态扫过（字面量 + 结构同构的 `je`），
+> **没找到可截断的点**；这不等于不存在，只是我们没扫到。
+>
+> **所以目前解除这个限制的办法，仍然是**
+> <https://github.com/dartraiden/NVIDIA-patcher/issues/3>
+> **所说的：把内核里的 SKU 限制名单去掉。**
+> 内核白名单对两条路径都有效（实测：Vulkan 137.6 → 10.3 µs），
+> 是现阶段唯一通用的解。
 
-### ⚠ 测试范围：只在 **OpenGL** 下验证
+
+
+### ⚠ 本仓库的补丁只适用于 OpenGL
 
 所有实测数据（`n83b`、Heaven 4.0、像素校验 `chk`）**全部是 OpenGL 负载**。
-用户态补丁改的是 `libnvidia-glcore.so` 里 GL 的批提交路径，因此本项目**针对 OpenGL 路径**。
+用户态补丁改的是 `libnvidia-glcore.so` 里 GL 的批提交路径，因此它**只对 OpenGL 生效**。
 
-**其他渲染后端未做验证** —— 补丁没有覆盖到那些代码路径，请不要把这里的结论
-直接外推到非 OpenGL 的应用上。若在别的后端复现了类似现象，需要单独定位，
-**不能套用本文的偏移与字节**。
+**其他渲染后端不要套用** —— 补丁没有覆盖到那些代码路径，也不要用本文的偏移与字节。
+（Vulkan 的情况见上方「结论」与下方「存疑清单」。）
 
 ### 🔍 未确认的部分（存疑清单）
 
@@ -98,6 +112,14 @@ Vulkan 侧未抓取，见「存疑清单」）；本项目的主体是用户态�
 ---
 
 ## Principle (English, brief)
+
+> **Scope of this repository (one line):** the per-batch delay **on the OpenGL path** is
+> locatable and can be cut **in user space** (`libnvidia-glcore.so`, 1 byte) — that is this repo.
+> For **Vulkan** we have **not** found an equivalent user-space hook (we scanned literals and
+> structurally-identical `je` sites; no hit — absence of evidence, not evidence of absence).
+> The current general fix is therefore still the one at
+> <https://github.com/dartraiden/NVIDIA-patcher/issues/3>: strip the SKU ID from the
+> kernel's restricted-device table.
 
 NVIDIA's kernel module ships a **restricted-SKU device table**. P106-100 (`10DE:1C07`)
 is listed in it. Once the card is identified as restricted, the user-space GL driver
