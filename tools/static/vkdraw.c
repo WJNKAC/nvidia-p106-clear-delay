@@ -205,7 +205,7 @@ int main(int argc, char **argv) {
     VkClearValue cv; memset(&cv, 0, sizeof cv); cv.color.float32[3] = 1.0f;
 
     int total = nWarm + nFrame;
-    double *ms = malloc(sizeof(double) * total);
+    double *tms = malloc(sizeof(double) * total);
 
     for (int f = 0; f < total; f++) {
         double a = now_ms();
@@ -231,10 +231,10 @@ int main(int argc, char **argv) {
             if (waitEach) CK(vkWaitForFences(dev, 1, &fe[i], VK_TRUE, UINT64_MAX));
         }
         if (!waitEach) CK(vkWaitForFences(dev, nSub, fe, VK_TRUE, UINT64_MAX));
-        ms[f] = now_ms() - a;
+        tms[f] = now_ms() - a;
     }
 
-    double *real = ms + nWarm;
+    double *real = tms + nWarm;
     qsort(real, nFrame, sizeof(double), cmpd);
     double p50 = real[nFrame / 2];
     double p95 = real[(int)(nFrame * 0.95)];
