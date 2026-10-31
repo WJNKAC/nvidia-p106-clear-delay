@@ -228,7 +228,7 @@
 | 176 | `176-N187-原生Vulkan也付每批139us-且只由3D renderpass触发.md` | N187 — ★ 原生 Vulkan 也付每批 ~139 µs，且只由 3D（render pass）触发：空提交 7.8 / copy 20 / render pass 137 µs；同样的活 100 次提交比 1 次慢 45 倍 |
 | 177 | `177-N188-Vulkan每renderpass固定137us-与工作量无关.md` | N188 — ★ Vulkan 的 ~137 µs 是**每 render pass** 的固定开销：100 提交×1pass 与 1 提交×100pass 同为 13.9 ms；256² clear 反算带宽仅 1.9 GB/s（4096² 时 158 GB/s）⇒ 固定开销而非带宽；已排除 glcore/eglcore 补丁点与 WAW 伪影 |
 | 178 | `178-N189-GDB抓到等待点-lavapipe对照证明144us是P104特有.md` | N189 — ★★ GDB 抓到等待点（主线程 88% 在 poll 100+ 个 /dev/nvidia0）；**lavapipe 对照：空 render pass 在 P104 上 154.2 µs，纯 CPU 只要 10.0 µs（15 倍）**；且空操作与真 clear 一样贵 ⇒ 与工作量无关；LD_PRELOAD 路线判不可行 |
-| 179 | `179-N190-闭环-内核白名单后Vulkan从137.6降到10.3us.md` | N190 — ★★★ **闭环**：打上内核白名单后 Vulkan 空 render pass **137.6 → 10.3 µs**（5 次零抖动，落到 lavapipe 9.9µs 量级）；zink 142.6→36 µs；原生 GL 不变（用户态补丁本就在拦）⇒ 两者不叠加 |
+| 179 | `179-N190-干预实验打内核白名单后Vulkan从137.6降到10.3us.md` | N190 — ★★ **干预实验**（非机制闭环）：打内核白名单后 Vulkan 空 render pass **137.6 → 10.3 µs**（5 次零抖动）；zink 142.6→36 µs；原生 GL 不变 ⇒ 两者不叠加。⚠ 延迟究竟在内核/固件/硅片哪一层仍未定位，见 §9 |
 
 ---
 
